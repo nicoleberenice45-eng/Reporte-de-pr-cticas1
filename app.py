@@ -8,61 +8,57 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet
 
 app = Flask(__name__)
-
 UPLOAD_FOLDER = "temp"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# 🎨 HTML
 HTML = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Reportes</title>
-    <style>
-        body {
-            font-family: Arial;
-            background: linear-gradient(135deg, #4CAF50, #FFEB3B);
-            text-align: center;
-        }
-        .box {
-            background: white;
-            padding: 20px;
-            margin: 40px auto;
-            width: 500px;
-            border-radius: 15px;
-        }
-        button {
-            padding: 10px;
-            margin: 5px;
-            width: 80%;
-            border: none;
-            border-radius: 8px;
-            background: #4CAF50;
-            color: white;
-            cursor: pointer;
-        }
-    </style>
+<style>
+body {
+    font-family: Arial;
+    background: linear-gradient(135deg, #4CAF50, #FFEB3B);
+    text-align: center;
+}
+.box {
+    background: white;
+    padding: 20px;
+    margin: 40px auto;
+    width: 500px;
+    border-radius: 15px;
+}
+button {
+    padding: 10px;
+    margin: 5px;
+    width: 80%;
+    border-radius: 8px;
+    border: none;
+    background: #4CAF50;
+    color: white;
+}
+</style>
 </head>
 <body>
 
 <div class="box">
-    <h2>📊 Subir Excel</h2>
-    <form method="POST" enctype="multipart/form-data">
-        <input type="file" name="file" required>
-        <button type="submit">Procesar</button>
-    </form>
+<h2>Subir Excel</h2>
+<form method="POST" enctype="multipart/form-data">
+<input type="file" name="file" required>
+<button>Procesar</button>
+</form>
 </div>
 
 {% if alumnos %}
 <div class="box">
-    <h3>Selecciona un alumno</h3>
-    {% for alumno in alumnos %}
-        <form action="/reporte" method="POST">
-            <input type="hidden" name="alumno" value="{{alumno}}">
-            <input type="hidden" name="file_id" value="{{file_id}}">
-            <button type="submit">{{alumno}}</button>
-        </form>
-    {% endfor %}
+<h3>Selecciona alumno</h3>
+{% for alumno in alumnos %}
+<form action="/reporte" method="POST">
+<input type="hidden" name="alumno" value="{{alumno}}">
+<input type="hidden" name="file_id" value="{{file_id}}">
+<button>{{alumno}}</button>
+</form>
+{% endfor %}
 </div>
 {% endif %}
 
@@ -70,24 +66,30 @@ HTML = """
 </html>
 """
 
-# 🔍 PROCESAR TU EXCEL REAL
+# 🔥 PROCESAR TU FORMATO EXACTO
 def procesar_excel(path):
     df = pd.read_excel(path, header=None)
 
-    headers_main = df.iloc[5]
-    headers_sub = df.iloc[6]
+    cursos = df.iloc[0]   # ARITMÉTICA, ÁLGEBRA...
+    practicas = df.iloc[1]  # P1, P2...
 
     columnas = []
-    for i in range(len(headers_main)):
-        if pd.notna(headers_sub[i]):
-            columnas.append(str(headers_sub[i]))
+    curso_actual = ""
+
+    for i in range(len(cursos)):
+        if pd.notna(cursos[i]):
+            curso_actual = str(cursos[i]).strip()
+
+        if "ALUMNO" in str(cursos[i]).upper():
+            columnas.append("Alumno")
+        elif "P" in str(practicas[i]):
+            columnas.append(f"{curso_actual}_{practicas[i]}")
         else:
-            columnas.append(str(headers_main[i]))
+            columnas.append(f"col_{i}")
 
     df.columns = columnas
-    df = df.iloc[7:].reset_index(drop=True)
+    df = df.iloc[2:].reset_index(drop=True)
 
-    df.rename(columns={"APELLIDOS Y NOMBRES DEL ALUMNO": "Alumno"}, inplace=True)
     df = df[df["Alumno"].notna()]
 
     return df
@@ -107,36 +109,47 @@ def generar_pdf(alumno, df, file_id):
     elements.append(Paragraph(f"Alumno: {alumno}", styles["Normal"]))
     elements.append(Spacer(1, 20))
 
-    practicas = ["1º s", "2º s", "3º s", "4º s", "5º s", "6º s"]
+    cursos_dict = {}
 
-    tabla = [["Prácticas"] + practicas + ["Promedio"]]
+    for col in df.columns:
+        if "_" in col:
+            curso, practica = col.split("_")
+            cursos_dict.setdefault(curso, []).append(col)
 
-    for _, row in data.iterrows():
+    for curso, cols in cursos_dict.items():
+        tabla = [["Práctica", "Nota"]]
         notas = []
-        for p in practicas:
-            val = row.get(p, 0)
+
+        for col in cols:
+            val = data.iloc[0][col]
+
             try:
                 val = float(val)
             except:
                 val = 0
+
+            practica = col.split("_")[1]
+            tabla.append([practica, val])
             notas.append(val)
 
         promedio = round(sum(notas)/len(notas), 2)
-        tabla.append(["Notas"] + notas + [promedio])
 
-    table = Table(tabla)
-    table.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.green),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-        ('GRID', (0,0), (-1,-1), 1, colors.black)
-    ]))
+        elements.append(Paragraph(f"<b>{curso}</b>", styles["Heading2"]))
+        t = Table(tabla)
+        t.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.green),
+            ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+            ('GRID', (0,0), (-1,-1), 1, colors.black)
+        ]))
+        elements.append(t)
+        elements.append(Spacer(1, 15))
 
-    elements.append(table)
+        elements.append(Paragraph(f"Promedio: {promedio}", styles["Normal"]))
+        elements.append(Spacer(1, 10))
+
     doc.build(elements)
-
     return file_path
 
-# 🌐 RUTAS
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
@@ -147,7 +160,6 @@ def index():
         file.save(path)
 
         df = procesar_excel(path)
-
         alumnos = df["Alumno"].unique().tolist()
 
         return render_template_string(HTML, alumnos=alumnos, file_id=file_id)
@@ -162,9 +174,9 @@ def reporte():
     path = f"{UPLOAD_FOLDER}/{file_id}.xlsx"
     df = procesar_excel(path)
 
-    pdf_path = generar_pdf(alumno, df, file_id)
+    pdf = generar_pdf(alumno, df, file_id)
 
-    return send_file(pdf_path, as_attachment=True)
+    return send_file(pdf, as_attachment=True)
 
 if __name__ == "__main__":
     app.run(debug=True)
