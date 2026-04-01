@@ -2,13 +2,13 @@ from flask import Flask, request, render_template_string, send_file
 import pandas as pd
 import os
 import uuid
+import traceback
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet
 
 app = Flask(__name__)
-app.config["PROPAGATE_EXCEPTIONS"] = True
 
 UPLOAD_FOLDER = "temp"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -38,10 +38,10 @@ button {
     border: none;
     background: #4CAF50;
     color: white;
-    cursor: pointer;
 }
-button:hover {
-    background: #2E7D32;
+.error {
+    color: red;
+    font-weight: bold;
 }
 </style>
 </head>
@@ -55,9 +55,15 @@ button:hover {
 </form>
 </div>
 
+{% if error %}
+<div class="box error">
+{{error}}
+</div>
+{% endif %}
+
 {% if alumnos %}
 <div class="box">
-<h3>Selecciona un alumno</h3>
+<h3>Selecciona alumno</h3>
 {% for alumno in alumnos %}
 <form action="/reporte" method="POST">
 <input type="hidden" name="alumno" value="{{alumno}}">
@@ -72,53 +78,57 @@ button:hover {
 </html>
 """
 
-# 🔥 PROCESAMIENTO PERFECTO PARA TU EXCEL
+# 🔥 PROCESAMIENTO ULTRA SEGURO
 def procesar_excel(path):
     df = pd.read_excel(path, header=None)
 
-    # 🔍 Buscar fila donde está "ALUMNO"
+    # buscar fila alumno
     fila_alumno = None
     for i in range(len(df)):
-        if df.iloc[i].astype(str).str.contains("ALUMNO", case=False).any():
+        fila = df.iloc[i].astype(str)
+        if fila.str.contains("ALUMNO", case=False).any():
             fila_alumno = i
             break
 
     if fila_alumno is None:
-        raise Exception("No se encontró encabezado")
+        raise Exception("No se encontró la fila de ALUMNO")
 
     fila_cursos = fila_alumno - 1
-    fila_practicas = fila_alumno
 
-    # 🔥 CLAVE: rellenar cursos (celdas combinadas)
     cursos = df.iloc[fila_cursos].fillna(method="ffill")
-    practicas = df.iloc[fila_practicas]
+    practicas = df.iloc[fila_alumno]
 
     columnas = []
 
     for i in range(len(cursos)):
-        curso = str(cursos[i]).strip()
-        practica = str(practicas[i]).strip()
+        curso = str(cursos[i])
+        practica = str(practicas[i])
 
         if "ALUMNO" in practica.upper():
             columnas.append("Alumno")
         elif practica.upper().startswith("P"):
             columnas.append(f"{curso}_{practica}")
         else:
-            columnas.append(f"col_{i}")
+            columnas.append(None)
 
     df.columns = columnas
+    df = df.iloc[fila_alumno + 1:].reset_index(drop=True)
 
-    # datos reales
-    df = df.iloc[fila_practicas + 1:].reset_index(drop=True)
+    # eliminar columnas basura
+    df = df.loc[:, df.columns.notna()]
 
+    # eliminar filas vacías
     df = df[df["Alumno"].notna()]
 
     return df
 
 
-# 📄 GENERAR PDF CORRECTO
+# 📄 PDF
 def generar_pdf(alumno, df, file_id):
     data = df[df["Alumno"] == alumno]
+
+    if data.empty:
+        raise Exception("Alumno sin datos")
 
     file_path = f"{UPLOAD_FOLDER}/{file_id}_{alumno}.pdf"
 
@@ -133,17 +143,18 @@ def generar_pdf(alumno, df, file_id):
 
     cursos_dict = {}
 
-    # agrupar cursos
     for col in df.columns:
-        if "_" in col:
+        if col != "Alumno" and "_" in col:
             curso, practica = col.split("_")
             cursos_dict.setdefault(curso, []).append(col)
 
-    # generar tablas
     for curso, cols in cursos_dict.items():
 
-        # 🔥 ordenar P1 → P6 correctamente
-        cols = sorted(cols, key=lambda x: int(x.split("_")[1].replace("P", "")))
+        # ordenar prácticas
+        try:
+            cols = sorted(cols, key=lambda x: int(x.split("_")[1].replace("P","")))
+        except:
+            pass
 
         tabla = [["Práctica", "Nota"]]
         notas = []
@@ -156,11 +167,13 @@ def generar_pdf(alumno, df, file_id):
             except:
                 val = 0
 
-            practica = col.split("_")[1]
-            tabla.append([practica, val])
+            tabla.append([col.split("_")[1], val])
             notas.append(val)
 
-        promedio = round(sum(notas)/len(notas), 2)
+        if notas:
+            promedio = round(sum(notas)/len(notas), 2)
+        else:
+            promedio = 0
 
         elements.append(Paragraph(f"<b>{curso}</b>", styles["Heading2"]))
 
@@ -177,40 +190,47 @@ def generar_pdf(alumno, df, file_id):
         elements.append(Spacer(1, 15))
 
     doc.build(elements)
-
     return file_path
 
 
 # 🌐 RUTAS
 @app.route("/", methods=["GET", "POST"])
 def index():
-    if request.method == "POST":
-        file = request.files["file"]
+    try:
+        if request.method == "POST":
+            file = request.files["file"]
 
-        file_id = str(uuid.uuid4())
-        path = f"{UPLOAD_FOLDER}/{file_id}.xlsx"
-        file.save(path)
+            file_id = str(uuid.uuid4())
+            path = f"{UPLOAD_FOLDER}/{file_id}.xlsx"
+            file.save(path)
 
-        df = procesar_excel(path)
+            df = procesar_excel(path)
 
-        alumnos = df["Alumno"].unique().tolist()
+            alumnos = df["Alumno"].dropna().unique().tolist()
 
-        return render_template_string(HTML, alumnos=alumnos, file_id=file_id)
+            return render_template_string(HTML, alumnos=alumnos, file_id=file_id)
 
-    return render_template_string(HTML, alumnos=None)
+        return render_template_string(HTML)
+
+    except Exception as e:
+        return render_template_string(HTML, error=str(e))
 
 
 @app.route("/reporte", methods=["POST"])
 def reporte():
-    alumno = request.form["alumno"]
-    file_id = request.form["file_id"]
+    try:
+        alumno = request.form["alumno"]
+        file_id = request.form["file_id"]
 
-    path = f"{UPLOAD_FOLDER}/{file_id}.xlsx"
-    df = procesar_excel(path)
+        path = f"{UPLOAD_FOLDER}/{file_id}.xlsx"
+        df = procesar_excel(path)
 
-    pdf = generar_pdf(alumno, df, file_id)
+        pdf = generar_pdf(alumno, df, file_id)
 
-    return send_file(pdf, as_attachment=True)
+        return send_file(pdf, as_attachment=True)
+
+    except Exception as e:
+        return f"Error: {str(e)}<br><pre>{traceback.format_exc()}</pre>"
 
 
 if __name__ == "__main__":
