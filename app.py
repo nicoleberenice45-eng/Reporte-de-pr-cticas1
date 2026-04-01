@@ -2,7 +2,6 @@ from flask import Flask, request, render_template_string, send_file
 import pandas as pd
 import os
 import uuid
-import traceback
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
@@ -39,10 +38,6 @@ button {
     background: #4CAF50;
     color: white;
 }
-.error {
-    color: red;
-    font-weight: bold;
-}
 </style>
 </head>
 <body>
@@ -54,12 +49,6 @@ button {
 <button>Procesar</button>
 </form>
 </div>
-
-{% if error %}
-<div class="box error">
-{{error}}
-</div>
-{% endif %}
 
 {% if alumnos %}
 <div class="box">
@@ -78,33 +67,23 @@ button {
 </html>
 """
 
-# 🔥 PROCESAMIENTO ULTRA SEGURO
+# 🔥 PROCESAR TU EXCEL REAL (OPCIÓN 2)
 def procesar_excel(path):
     df = pd.read_excel(path, header=None)
 
-    # buscar fila alumno
-    fila_alumno = None
-    for i in range(len(df)):
-        fila = df.iloc[i].astype(str)
-        if fila.str.contains("ALUMNO", case=False).any():
-            fila_alumno = i
-            break
+    # fila 0 = cursos
+    cursos = df.iloc[0].ffill()
 
-    if fila_alumno is None:
-        raise Exception("No se encontró la fila de ALUMNO")
-
-    fila_cursos = fila_alumno - 1
-
-    cursos = df.iloc[fila_cursos].fillna(method="ffill")
-    practicas = df.iloc[fila_alumno]
+    # fila 1 = prácticas
+    practicas = df.iloc[1]
 
     columnas = []
 
     for i in range(len(cursos)):
-        curso = str(cursos[i])
-        practica = str(practicas[i])
+        curso = str(cursos[i]).strip()
+        practica = str(practicas[i]).strip()
 
-        if "ALUMNO" in practica.upper():
+        if "ALUMNO" in curso.upper():
             columnas.append("Alumno")
         elif practica.upper().startswith("P"):
             columnas.append(f"{curso}_{practica}")
@@ -112,23 +91,22 @@ def procesar_excel(path):
             columnas.append(None)
 
     df.columns = columnas
-    df = df.iloc[fila_alumno + 1:].reset_index(drop=True)
+
+    # datos desde fila 2
+    df = df.iloc[2:].reset_index(drop=True)
 
     # eliminar columnas basura
     df = df.loc[:, df.columns.notna()]
 
-    # eliminar filas vacías
+    # eliminar filas sin alumno
     df = df[df["Alumno"].notna()]
 
     return df
 
 
-# 📄 PDF
+# 📄 GENERAR PDF
 def generar_pdf(alumno, df, file_id):
     data = df[df["Alumno"] == alumno]
-
-    if data.empty:
-        raise Exception("Alumno sin datos")
 
     file_path = f"{UPLOAD_FOLDER}/{file_id}_{alumno}.pdf"
 
@@ -143,18 +121,16 @@ def generar_pdf(alumno, df, file_id):
 
     cursos_dict = {}
 
+    # agrupar cursos
     for col in df.columns:
-        if col != "Alumno" and "_" in col:
+        if "_" in col:
             curso, practica = col.split("_")
             cursos_dict.setdefault(curso, []).append(col)
 
     for curso, cols in cursos_dict.items():
 
-        # ordenar prácticas
-        try:
-            cols = sorted(cols, key=lambda x: int(x.split("_")[1].replace("P","")))
-        except:
-            pass
+        # ordenar P1-P6
+        cols = sorted(cols, key=lambda x: int(x.split("_")[1].replace("P", "")))
 
         tabla = [["Práctica", "Nota"]]
         notas = []
@@ -167,13 +143,11 @@ def generar_pdf(alumno, df, file_id):
             except:
                 val = 0
 
-            tabla.append([col.split("_")[1], val])
+            practica = col.split("_")[1]
+            tabla.append([practica, val])
             notas.append(val)
 
-        if notas:
-            promedio = round(sum(notas)/len(notas), 2)
-        else:
-            promedio = 0
+        promedio = round(sum(notas)/len(notas), 2)
 
         elements.append(Paragraph(f"<b>{curso}</b>", styles["Heading2"]))
 
@@ -190,47 +164,39 @@ def generar_pdf(alumno, df, file_id):
         elements.append(Spacer(1, 15))
 
     doc.build(elements)
+
     return file_path
 
 
-# 🌐 RUTAS
 @app.route("/", methods=["GET", "POST"])
 def index():
-    try:
-        if request.method == "POST":
-            file = request.files["file"]
+    if request.method == "POST":
+        file = request.files["file"]
 
-            file_id = str(uuid.uuid4())
-            path = f"{UPLOAD_FOLDER}/{file_id}.xlsx"
-            file.save(path)
+        file_id = str(uuid.uuid4())
+        path = f"{UPLOAD_FOLDER}/{file_id}.xlsx"
+        file.save(path)
 
-            df = procesar_excel(path)
+        df = procesar_excel(path)
 
-            alumnos = df["Alumno"].dropna().unique().tolist()
+        alumnos = df["Alumno"].unique().tolist()
 
-            return render_template_string(HTML, alumnos=alumnos, file_id=file_id)
+        return render_template_string(HTML, alumnos=alumnos, file_id=file_id)
 
-        return render_template_string(HTML)
-
-    except Exception as e:
-        return render_template_string(HTML, error=str(e))
+    return render_template_string(HTML)
 
 
 @app.route("/reporte", methods=["POST"])
 def reporte():
-    try:
-        alumno = request.form["alumno"]
-        file_id = request.form["file_id"]
+    alumno = request.form["alumno"]
+    file_id = request.form["file_id"]
 
-        path = f"{UPLOAD_FOLDER}/{file_id}.xlsx"
-        df = procesar_excel(path)
+    path = f"{UPLOAD_FOLDER}/{file_id}.xlsx"
+    df = procesar_excel(path)
 
-        pdf = generar_pdf(alumno, df, file_id)
+    pdf = generar_pdf(alumno, df, file_id)
 
-        return send_file(pdf, as_attachment=True)
-
-    except Exception as e:
-        return f"Error: {str(e)}<br><pre>{traceback.format_exc()}</pre>"
+    return send_file(pdf, as_attachment=True)
 
 
 if __name__ == "__main__":
