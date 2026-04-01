@@ -72,11 +72,11 @@ button:hover {
 </html>
 """
 
-# 🔥 FUNCIÓN ROBUSTA PARA TU EXCEL
+# 🔥 PROCESAMIENTO PERFECTO PARA TU EXCEL
 def procesar_excel(path):
     df = pd.read_excel(path, header=None)
 
-    # 🔍 buscar fila donde está ALUMNO
+    # 🔍 Buscar fila donde está "ALUMNO"
     fila_alumno = None
     for i in range(len(df)):
         if df.iloc[i].astype(str).str.contains("ALUMNO", case=False).any():
@@ -84,25 +84,25 @@ def procesar_excel(path):
             break
 
     if fila_alumno is None:
-        raise Exception("No se encontró la fila de encabezado")
+        raise Exception("No se encontró encabezado")
 
     fila_cursos = fila_alumno - 1
     fila_practicas = fila_alumno
 
-    cursos = df.iloc[fila_cursos]
+    # 🔥 CLAVE: rellenar cursos (celdas combinadas)
+    cursos = df.iloc[fila_cursos].fillna(method="ffill")
     practicas = df.iloc[fila_practicas]
 
     columnas = []
-    curso_actual = ""
 
     for i in range(len(cursos)):
-        if pd.notna(cursos[i]):
-            curso_actual = str(cursos[i]).strip()
+        curso = str(cursos[i]).strip()
+        practica = str(practicas[i]).strip()
 
-        if "ALUMNO" in str(practicas[i]).upper():
+        if "ALUMNO" in practica.upper():
             columnas.append("Alumno")
-        elif "P" in str(practicas[i]).upper():
-            columnas.append(f"{curso_actual}_{practicas[i]}")
+        elif practica.upper().startswith("P"):
+            columnas.append(f"{curso}_{practica}")
         else:
             columnas.append(f"col_{i}")
 
@@ -111,13 +111,12 @@ def procesar_excel(path):
     # datos reales
     df = df.iloc[fila_practicas + 1:].reset_index(drop=True)
 
-    # limpiar alumnos
     df = df[df["Alumno"].notna()]
 
     return df
 
 
-# 📄 GENERAR PDF
+# 📄 GENERAR PDF CORRECTO
 def generar_pdf(alumno, df, file_id):
     data = df[df["Alumno"] == alumno]
 
@@ -140,12 +139,16 @@ def generar_pdf(alumno, df, file_id):
             curso, practica = col.split("_")
             cursos_dict.setdefault(curso, []).append(col)
 
-    # construir tablas
+    # generar tablas
     for curso, cols in cursos_dict.items():
+
+        # 🔥 ordenar P1 → P6 correctamente
+        cols = sorted(cols, key=lambda x: int(x.split("_")[1].replace("P", "")))
+
         tabla = [["Práctica", "Nota"]]
         notas = []
 
-        for col in sorted(cols):
+        for col in cols:
             val = data.iloc[0][col]
 
             try:
