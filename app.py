@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template_string, send_file
+from flask import Flask, request, render_template_string, send_file, redirect, url_for
 import pandas as pd
 import os
 import uuid
@@ -27,11 +27,15 @@ button { padding: 10px; margin: 5px; width: 80%; border-radius: 8px; border: non
 <body>
 
 <div class="box">
-<h2>Subir Excel</h2>
-<form method="POST" enctype="multipart/form-data">
+<h2>📊 Subir Excel</h2>
+
+{% if not alumnos %}
+<form method="POST" enctype="multipart/form-data" action="/">
 <input type="file" name="file" required>
 <button type="submit">Procesar</button>
 </form>
+{% endif %}
+
 </div>
 
 {% if error %}
@@ -55,7 +59,7 @@ button { padding: 10px; margin: 5px; width: 80%; border-radius: 8px; border: non
 </html>
 """
 
-# 🔥 PROCESAR EXCEL SIMPLE Y SEGURO
+# ✅ PROCESAR EXCEL
 def procesar_excel(path):
     df = pd.read_excel(path, header=None)
 
@@ -69,7 +73,7 @@ def procesar_excel(path):
             columnas.append("Alumno")
         else:
             curso = str(cursos[i]).strip()
-            practica = str(practicas[i]).strip().upper()
+            practica = str(practicas[i]).strip().upper().replace(" ", "")
 
             if practica.startswith("P"):
                 columnas.append(f"{curso}_{practica}")
@@ -77,7 +81,6 @@ def procesar_excel(path):
                 columnas.append(None)
 
     df.columns = columnas
-
     df = df.iloc[2:]
     df = df.loc[:, df.columns.notna()]
     df = df[df["Alumno"].notna()]
@@ -85,9 +88,12 @@ def procesar_excel(path):
     return df
 
 
-# 📄 PDF
+# 📄 GENERAR PDF
 def generar_pdf(alumno, df, file_id):
     data = df[df["Alumno"] == alumno]
+
+    if data.empty:
+        raise Exception("Alumno sin datos")
 
     file_path = f"{UPLOAD_FOLDER}/{file_id}_{alumno}.pdf"
 
@@ -108,7 +114,9 @@ def generar_pdf(alumno, df, file_id):
     for curso, cols in cursos_dict.items():
         tabla = [["Práctica", "Nota"]]
 
-        for col in sorted(cols):
+        cols = sorted(cols, key=lambda x: int(x.split("_")[1].replace("P","")))
+
+        for col in cols:
             val = data.iloc[0][col]
             tabla.append([col.split("_")[1], val])
 
@@ -125,7 +133,7 @@ def generar_pdf(alumno, df, file_id):
     return file_path
 
 
-# 🌐 HOME
+# 🌐 HOME (POST + REDIRECT)
 @app.route("/", methods=["GET", "POST"])
 def index():
     try:
@@ -137,30 +145,42 @@ def index():
             file = request.files["file"]
 
             if file.filename == "":
-                return render_template_string(HTML, error="Archivo vacío")
+                return render_template_string(HTML, error="Selecciona un archivo")
 
             file_id = str(uuid.uuid4())
             path = os.path.join(UPLOAD_FOLDER, f"{file_id}.xlsx")
 
             file.save(path)
 
-            # 🔍 verificar guardado
             if not os.path.exists(path):
-                return render_template_string(HTML, error="No se pudo guardar el archivo")
+                return render_template_string(HTML, error="Error guardando archivo")
 
-            df = procesar_excel(path)
-
-            if "Alumno" not in df.columns:
-                return render_template_string(HTML, error="No se detectó columna Alumno")
-
-            alumnos = df["Alumno"].dropna().unique().tolist()
-
-            if not alumnos:
-                return render_template_string(HTML, error="No se encontraron alumnos")
-
-            return render_template_string(HTML, alumnos=alumnos, file_id=file_id)
+            # 🔥 REDIRECT para evitar bug del input file
+            return redirect(url_for("ver_alumnos", file_id=file_id))
 
         return render_template_string(HTML)
+
+    except Exception as e:
+        return render_template_string(HTML, error=str(e))
+
+
+# 📋 VER ALUMNOS
+@app.route("/alumnos/<file_id>")
+def ver_alumnos(file_id):
+    try:
+        path = os.path.join(UPLOAD_FOLDER, f"{file_id}.xlsx")
+
+        if not os.path.exists(path):
+            return render_template_string(HTML, error="Archivo no encontrado")
+
+        df = procesar_excel(path)
+
+        alumnos = df["Alumno"].dropna().unique().tolist()
+
+        if not alumnos:
+            return render_template_string(HTML, error="No se encontraron alumnos")
+
+        return render_template_string(HTML, alumnos=alumnos, file_id=file_id)
 
     except Exception as e:
         return render_template_string(HTML, error=str(e))
