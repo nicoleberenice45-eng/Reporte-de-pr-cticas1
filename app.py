@@ -105,13 +105,112 @@ def procesar_excel(path):
 
 
 # 📄 GENERAR PDF PRO
-from reportlab.platypus import (
-    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-    Frame, PageTemplate, KeepTogether, PageBreak, NextPageTemplate
-)
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.styles import getSampleStyleSheet
+def generar_pdf(alumno, df, file_id):
+    data = df[df["Alumno"] == alumno]
+
+    if data.empty:
+        raise Exception("Alumno sin datos")
+
+    file_path = f"temp/{file_id}_{alumno}.pdf"
+
+    styles = getSampleStyleSheet()
+    elements = []
+
+    # 🔹 ENCABEZADO
+    elements.append(Paragraph("📊 <b>REPORTE DE RENDIMIENTO</b>", styles["Title"]))
+    elements.append(Spacer(1, 8))
+    elements.append(Paragraph(f"<b>Alumno:</b> {alumno}", styles["Normal"]))
+    elements.append(Spacer(1, 15))
+
+    cursos_dict = {}
+    promedios = {}
+
+    for col in df.columns:
+        if col != "Alumno":
+            curso, _ = col.split("_")
+            cursos_dict.setdefault(curso, []).append(col)
+
+    # 🔹 CURSOS (2 columnas)
+    for curso, cols in cursos_dict.items():
+
+        cols = sorted(cols, key=lambda x: int(x.split("_")[1].replace("P", "")))
+
+        tabla = [["Práctica", "Nota"]]
+        notas = []
+
+        for col in cols:
+            val = data.iloc[0][col]
+
+            if pd.isna(val) or val == "":
+                notas.append(0)
+                tabla.append([col.split("_")[1], "<font color='gray'>Pendiente</font>"])
+            else:
+                val = float(val)
+                notas.append(val)
+                tabla.append([col.split("_")[1], val])
+
+        promedio = round(sum(notas) / len(notas), 2)
+        promedios[curso] = promedio
+
+        color_prom = "green" if promedio >= 13 else "red"
+
+        t = Table(tabla)
+        t.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.darkgreen),
+            ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+            ('GRID', (0,0), (-1,-1), 1, colors.black)
+        ]))
+
+        bloque = [
+            Paragraph(f"<b>{curso}</b>", styles["Heading3"]),
+            t,
+            Paragraph(f"<b>Promedio:</b> <font color='{color_prom}'>{promedio}</font>", styles["Normal"]),
+            Spacer(1, 12)
+        ]
+
+        elements.append(KeepTogether(bloque))
+
+    # 🔥 CAMBIO A UNA SOLA COLUMNA
+    elements.append(NextPageTemplate("OneCol"))
+    elements.append(PageBreak())
+
+    # 🔹 RANKING (1 columna)
+    elements.append(Paragraph("🏆 <b>Ranking de Fortalezas</b>", styles["Title"]))
+    elements.append(Spacer(1, 15))
+
+    ranking = sorted(promedios.items(), key=lambda x: x[1], reverse=True)
+
+    tabla_rank = [["Posición", "Curso", "Promedio"]]
+
+    for i, (curso, prom) in enumerate(ranking, start=1):
+        tabla_rank.append([i, curso, prom])
+
+    t_rank = Table(tabla_rank)
+    t_rank.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.darkblue),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+        ('GRID', (0,0), (-1,-1), 1, colors.black)
+    ]))
+
+    elements.append(t_rank)
+
+    # 🔥 DEFINICIÓN DE COLUMNAS
+    doc = SimpleDocTemplate(file_path, pagesize=letter)
+
+    # 2 columnas
+    frame1 = Frame(doc.leftMargin, doc.bottomMargin, 260, doc.height, id='col1')
+    frame2 = Frame(doc.leftMargin + 270, doc.bottomMargin, 260, doc.height, id='col2')
+    template_two = PageTemplate(id='TwoCol', frames=[frame1, frame2])
+
+    # 1 columna
+    frame_full = Frame(doc.leftMargin, doc.bottomMargin, doc.width, doc.height, id='full')
+    template_one = PageTemplate(id='OneCol', frames=[frame_full])
+
+    doc.addPageTemplates([template_two, template_one])
+
+    doc.build(elements)
+
+    return file_path
 
 
 # 🌐 RUTAS
