@@ -63,10 +63,13 @@ button { padding: 10px; margin: 5px; width: 80%; border-radius: 8px; border: non
 def dibujar_fondo(canvas, doc):
     width, height = letter
 
-    for i in range(100):
-        color = colors.Color(0, 0.5 + i/200, 0)
-        canvas.setFillColor(color)
-        canvas.rect(0, height * (i/100), width, height/100, stroke=0, fill=1)
+    # color base verde claro
+    canvas.setFillColorRGB(0.85, 1, 0.85)
+    canvas.rect(0, 0, width, height, fill=1, stroke=0)
+
+    # franja superior amarilla
+    canvas.setFillColorRGB(1, 0.9, 0.3)
+    canvas.rect(0, height - 100, width, 100, fill=1, stroke=0)
 
 
 # ✅ PROCESAR EXCEL (detecta filas correctas)
