@@ -4,7 +4,7 @@ import os
 import uuid
 import traceback
 
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Frame, PageTemplate
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Frame, PageTemplate, KeepTogether
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet
@@ -111,12 +111,11 @@ def generar_pdf(alumno, df, file_id):
     if data.empty:
         raise Exception("Alumno sin datos")
 
-    file_path = f"{UPLOAD_FOLDER}/{file_id}_{alumno}.pdf"
+    file_path = f"temp/{file_id}_{alumno}.pdf"
 
     styles = getSampleStyleSheet()
     elements = []
 
-    # encabezado
     elements.append(Paragraph("Reporte de Prácticas", styles["Title"]))
     elements.append(Spacer(1, 10))
     elements.append(Paragraph(f"Alumno: {alumno}", styles["Normal"]))
@@ -129,7 +128,7 @@ def generar_pdf(alumno, df, file_id):
             curso, _ = col.split("_")
             cursos_dict.setdefault(curso, []).append(col)
 
-    # contenido normal (fluye entre columnas)
+    # 🔥 BLOQUES QUE NO SE ROMPEN
     for curso, cols in cursos_dict.items():
 
         cols = sorted(cols, key=lambda x: int(x.split("_")[1].replace("P", "")))
@@ -147,17 +146,22 @@ def generar_pdf(alumno, df, file_id):
             ('GRID', (0,0), (-1,-1), 1, colors.black)
         ]))
 
-        elements.append(Paragraph(f"<b>{curso}</b>", styles["Heading3"]))
-        elements.append(t)
-        elements.append(Spacer(1, 12))
+        bloque = [
+            Paragraph(f"<b>{curso}</b>", styles["Heading3"]),
+            t,
+            Spacer(1, 12)
+        ]
 
-    # columnas reales
+        # 🔥 ESTO EVITA QUE SE PARTA
+        elements.append(KeepTogether(bloque))
+
+    # 🔥 COLUMNAS EN TODAS LAS PÁGINAS
     doc = SimpleDocTemplate(file_path, pagesize=letter)
 
     frame1 = Frame(doc.leftMargin, doc.bottomMargin, 260, doc.height, id='col1')
     frame2 = Frame(doc.leftMargin + 270, doc.bottomMargin, 260, doc.height, id='col2')
 
-    template = PageTemplate(frames=[frame1, frame2])
+    template = PageTemplate(id='TwoCol', frames=[frame1, frame2])
     doc.addPageTemplates([template])
 
     doc.build(elements)
