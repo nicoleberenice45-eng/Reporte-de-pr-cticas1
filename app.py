@@ -59,23 +59,37 @@ button { padding: 10px; margin: 5px; width: 80%; border-radius: 8px; border: non
 </html>
 """
 
-# ✅ PROCESAR EXCEL (INTELIGENTE)
+# 🎨 fondo degradado
+def dibujar_fondo(canvas, doc):
+    width, height = letter
+
+    for i in range(100):
+        color = colors.Color(0, 0.5 + i/200, 0)
+        canvas.setFillColor(color)
+        canvas.rect(0, height * (i/100), width, height/100, stroke=0, fill=1)
+
+
+# ✅ PROCESAR EXCEL (detecta filas correctas)
 def procesar_excel(path):
     df = pd.read_excel(path, header=None)
 
-    cursos = df.iloc[0].ffill()
-    practicas = df.iloc[1]
+    df = df.dropna(how="all").reset_index(drop=True)
 
-    # 🔥 detectar columna alumno automáticamente
-    col_alumno = None
-    for col in df.columns:
-        valores = df[col].astype(str)
-        if valores.str.contains("ALUMNO|NOMBRE", case=False).any():
-            col_alumno = col
+    # detectar fila de prácticas
+    fila_practicas = None
+    for i in range(len(df)):
+        fila = df.iloc[i].astype(str).str.upper()
+        if fila.str.contains("P1").any():
+            fila_practicas = i
             break
 
-    if col_alumno is None:
-        col_alumno = 0
+    if fila_practicas is None:
+        raise Exception("No se encontró fila de prácticas")
+
+    fila_cursos = fila_practicas - 1
+
+    cursos = df.iloc[fila_cursos].ffill()
+    practicas = df.iloc[fila_practicas]
 
     columnas = []
 
@@ -83,7 +97,7 @@ def procesar_excel(path):
         curso = str(cursos[i]).strip()
         practica = str(practicas[i]).strip().upper().replace(" ", "")
 
-        if i == col_alumno:
+        if i == 0:
             columnas.append("Alumno")
         elif practica.startswith("P"):
             columnas.append(f"{curso}_{practica}")
@@ -92,14 +106,14 @@ def procesar_excel(path):
 
     df.columns = columnas
 
-    df = df.iloc[2:]
+    df = df.iloc[fila_practicas + 1:].reset_index(drop=True)
     df = df.loc[:, df.columns.notna()]
     df = df[df["Alumno"].notna()]
 
     return df
 
 
-# 📄 GENERAR PDF
+# 📄 GENERAR PDF (2 COLUMNAS)
 def generar_pdf(alumno, df, file_id):
     data = df[df["Alumno"] == alumno]
 
@@ -112,7 +126,9 @@ def generar_pdf(alumno, df, file_id):
     styles = getSampleStyleSheet()
     elements = []
 
-    elements.append(Paragraph(f"Alumno: {alumno}", styles["Title"]))
+    elements.append(Paragraph("Reporte de Prácticas", styles["Title"]))
+    elements.append(Spacer(1, 10))
+    elements.append(Paragraph(f"Alumno: {alumno}", styles["Normal"]))
     elements.append(Spacer(1, 20))
 
     cursos_dict = {}
@@ -122,26 +138,46 @@ def generar_pdf(alumno, df, file_id):
             curso, _ = col.split("_")
             cursos_dict.setdefault(curso, []).append(col)
 
-    for curso, cols in cursos_dict.items():
+    cursos_lista = list(cursos_dict.items())
+    mitad = len(cursos_lista) // 2
 
-        cols = sorted(cols, key=lambda x: int(x.split("_")[1].replace("P","")))
+    col1 = cursos_lista[:mitad]
+    col2 = cursos_lista[mitad:]
 
-        tabla = [["Práctica", "Nota"]]
+    def crear_bloque(cursos):
+        bloque = []
+        for curso, cols in cursos:
 
-        for col in cols:
-            val = data.iloc[0][col]
-            tabla.append([col.split("_")[1], val])
+            cols = sorted(cols, key=lambda x: int(x.split("_")[1].replace("P", "")))
 
-        t = Table(tabla)
-        t.setStyle(TableStyle([
-            ('GRID', (0,0), (-1,-1), 1, colors.black)
-        ]))
+            tabla = [["Práctica", "Nota"]]
 
-        elements.append(Paragraph(curso, styles["Heading2"]))
-        elements.append(t)
-        elements.append(Spacer(1, 10))
+            for col in cols:
+                val = data.iloc[0][col]
+                tabla.append([col.split("_")[1], val])
 
-    doc.build(elements)
+            t = Table(tabla)
+            t.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,0), colors.green),
+                ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+                ('GRID', (0,0), (-1,-1), 1, colors.black)
+            ]))
+
+            bloque.append(Paragraph(f"<b>{curso}</b>", styles["Heading3"]))
+            bloque.append(t)
+            bloque.append(Spacer(1, 10))
+
+        return bloque
+
+    bloque1 = crear_bloque(col1)
+    bloque2 = crear_bloque(col2)
+
+    tabla_final = Table([[bloque1, bloque2]], colWidths=[270, 270])
+
+    elements.append(tabla_final)
+
+    doc.build(elements, onFirstPage=dibujar_fondo, onLaterPages=dibujar_fondo)
+
     return file_path
 
 
@@ -163,9 +199,6 @@ def index():
             path = os.path.join(UPLOAD_FOLDER, f"{file_id}.xlsx")
 
             file.save(path)
-
-            if not os.path.exists(path):
-                return render_template_string(HTML, error="Error guardando archivo")
 
             return redirect(url_for("ver_alumnos", file_id=file_id))
 
