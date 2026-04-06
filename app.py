@@ -6,7 +6,7 @@ import traceback
 
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
-    Frame, PageTemplate, KeepTogether, PageBreak
+    Frame, PageTemplate, KeepTogether, PageBreak, NextPageTemplate
 )
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
@@ -63,13 +63,11 @@ button { padding: 10px; margin: 5px; width: 80%; border-radius: 8px; border: non
 </html>
 """
 
-# ✅ PROCESAR EXCEL (detecta correctamente filas)
+# ✅ PROCESAR EXCEL
 def procesar_excel(path):
     df = pd.read_excel(path, header=None)
-
     df = df.dropna(how="all").reset_index(drop=True)
 
-    # detectar fila de prácticas
     fila_practicas = None
     for i in range(len(df)):
         fila = df.iloc[i].astype(str).str.upper()
@@ -99,7 +97,6 @@ def procesar_excel(path):
             columnas.append(None)
 
     df.columns = columnas
-
     df = df.iloc[fila_practicas + 1:].reset_index(drop=True)
     df = df.loc[:, df.columns.notna()]
     df = df[df["Alumno"].notna()]
@@ -107,117 +104,21 @@ def procesar_excel(path):
     return df
 
 
-# 📄 GENERAR PDF (2 COLUMNAS REALES)
-def generar_pdf(alumno, df, file_id):
-    data = df[df["Alumno"] == alumno]
-
-    if data.empty:
-        raise Exception("Alumno sin datos")
-
-    file_path = f"temp/{file_id}_{alumno}.pdf"
-
-    styles = getSampleStyleSheet()
-    elements = []
-
-    # 🔥 ENCABEZADO BONITO
-    elements.append(Paragraph("📊 <b>REPORTE DE RENDIMIENTO</b>", styles["Title"]))
-    elements.append(Spacer(1, 8))
-    elements.append(Paragraph(f"<b>Alumno:</b> {alumno}", styles["Normal"]))
-    elements.append(Spacer(1, 15))
-
-    cursos_dict = {}
-    promedios = {}
-
-    for col in df.columns:
-        if col != "Alumno":
-            curso, _ = col.split("_")
-            cursos_dict.setdefault(curso, []).append(col)
-
-    # 🔥 BLOQUES VISUALES
-    for curso, cols in cursos_dict.items():
-
-        cols = sorted(cols, key=lambda x: int(x.split("_")[1].replace("P", "")))
-
-        tabla = [["Práctica", "Nota"]]
-        notas = []
-
-        for col in cols:
-            val = data.iloc[0][col]
-            try:
-                val = float(val)
-            except:
-                val = 0
-
-            notas.append(val)
-            tabla.append([col.split("_")[1], val])
-
-        promedio = round(sum(notas) / len(notas), 2)
-        promedios[curso] = promedio
-
-        # 🎨 color según rendimiento
-        color_prom = colors.green if promedio >= 13 else colors.red
-
-        t = Table(tabla)
-        t.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,0), colors.darkgreen),
-            ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-            ('GRID', (0,0), (-1,-1), 1, colors.black)
-        ]))
-
-        bloque = [
-            Paragraph(f"<b>{curso}</b>", styles["Heading3"]),
-            t,
-            Paragraph(f"<b>Promedio:</b> <font color='{ 'green' if promedio>=13 else 'red' }'>{promedio}</font>", styles["Normal"]),
-            Spacer(1, 12)
-        ]
-
-        elements.append(KeepTogether(bloque))
-
-    # 🔥 RANKING
-    elements.append(PageBreak())  # nueva sección limpia
-
-    elements.append(Paragraph("🏆 <b>Ranking de Fortalezas</b>", styles["Title"]))
-    elements.append(Spacer(1, 15))
-
-    ranking = sorted(promedios.items(), key=lambda x: x[1], reverse=True)
-
-    tabla_rank = [["Posición", "Curso", "Promedio"]]
-
-    for i, (curso, prom) in enumerate(ranking, start=1):
-        tabla_rank.append([i, curso, prom])
-
-    t_rank = Table(tabla_rank)
-    t_rank.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.darkblue),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-        ('GRID', (0,0), (-1,-1), 1, colors.black)
-    ]))
-
-    elements.append(t_rank)
-
-    # 🔥 COLUMNAS REALES EN TODAS LAS PÁGINAS
-    doc = SimpleDocTemplate(file_path, pagesize=letter)
-
-    frame1 = Frame(doc.leftMargin, doc.bottomMargin, 260, doc.height, id='col1')
-    frame2 = Frame(doc.leftMargin + 270, doc.bottomMargin, 260, doc.height, id='col2')
-
-    template = PageTemplate(id='TwoCol', frames=[frame1, frame2])
-    doc.addPageTemplates([template])
-
-    doc.build(elements)
-
-    return file_path
+# 📄 GENERAR PDF PRO
+from reportlab.platypus import (
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+    Frame, PageTemplate, KeepTogether, PageBreak, NextPageTemplate
+)
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import getSampleStyleSheet
 
 
-# 🌐 HOME
+# 🌐 RUTAS
 @app.route("/", methods=["GET", "POST"])
 def index():
     try:
         if request.method == "POST":
-
-            if "file" not in request.files:
-                return render_template_string(HTML, error="No se envió archivo")
-
             file = request.files["file"]
 
             if file.filename == "":
@@ -225,7 +126,6 @@ def index():
 
             file_id = str(uuid.uuid4())
             path = os.path.join(UPLOAD_FOLDER, f"{file_id}.xlsx")
-
             file.save(path)
 
             return redirect(url_for("ver_alumnos", file_id=file_id))
@@ -236,21 +136,13 @@ def index():
         return render_template_string(HTML, error=str(e))
 
 
-# 📋 VER ALUMNOS
 @app.route("/alumnos/<file_id>")
 def ver_alumnos(file_id):
     try:
         path = os.path.join(UPLOAD_FOLDER, f"{file_id}.xlsx")
-
-        if not os.path.exists(path):
-            return render_template_string(HTML, error="Archivo no encontrado")
-
         df = procesar_excel(path)
 
         alumnos = df["Alumno"].dropna().unique().tolist()
-
-        if not alumnos:
-            return render_template_string(HTML, error="No se encontraron alumnos")
 
         return render_template_string(HTML, alumnos=alumnos, file_id=file_id)
 
@@ -258,7 +150,6 @@ def ver_alumnos(file_id):
         return render_template_string(HTML, error=str(e))
 
 
-# 📄 REPORTE
 @app.route("/reporte", methods=["POST"])
 def reporte():
     try:
@@ -266,10 +157,6 @@ def reporte():
         file_id = request.form["file_id"]
 
         path = os.path.join(UPLOAD_FOLDER, f"{file_id}.xlsx")
-
-        if not os.path.exists(path):
-            return "El archivo ya no existe. Súbelo otra vez."
-
         df = procesar_excel(path)
 
         pdf = generar_pdf(alumno, df, file_id)
