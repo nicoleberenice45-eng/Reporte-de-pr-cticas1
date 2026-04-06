@@ -144,16 +144,17 @@ def generar_pdf(alumno, df, file_id):
         for col in cols:
             val = data.iloc[0][col]
 
-            if pd.isna(val) or val == "":
-                notas.append(0)
-                tabla.append([col.split("_")[1], "Pendiente"])
-            else:
-                val = float(val)
-                notas.append(val)
-                tabla.append([col.split("_")[1], val])
+        if pd.isna(val) or val == "":
+    tabla.append([col.split("_")[1], "Pendiente"])
+else:
+    val = float(val)
+    notas.append(val)
+    tabla.append([col.split("_")[1], val])
 
-        promedio = round(sum(notas) / len(notas), 2)
-        promedios[curso] = promedio
+        if notas:
+    promedio = round(sum(notas) / len(notas), 2)
+else:
+    promedio = 0
 
         color_prom = "green" if promedio >= 13 else "red"
 
