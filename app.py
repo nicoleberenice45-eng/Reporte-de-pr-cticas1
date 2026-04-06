@@ -63,7 +63,7 @@ button { padding: 10px; margin: 5px; width: 80%; border-radius: 8px; border: non
 </html>
 """
 
-# ✅ PROCESAR EXCEL
+# 📊 PROCESAR EXCEL
 def procesar_excel(path):
     df = pd.read_excel(path, header=None)
     df = df.dropna(how="all").reset_index(drop=True)
@@ -104,22 +104,20 @@ def procesar_excel(path):
     return df
 
 
-# 📄 GENERAR PDF PRO
+# 📄 GENERAR PDF
 def generar_pdf(alumno, df, file_id):
     data = df[df["Alumno"] == alumno]
 
     if data.empty:
         raise Exception("Alumno sin datos")
 
-    file_path = f"temp/{file_id}_{alumno}.pdf"
+    file_path = f"{UPLOAD_FOLDER}/{file_id}_{alumno}.pdf"
 
     styles = getSampleStyleSheet()
     elements = []
 
-    # 🔥 FORZAR 2 COLUMNAS DESDE EL INICIO
     elements.append(NextPageTemplate("TwoCol"))
 
-    # 🔹 ENCABEZADO
     elements.append(Paragraph("📊 <b>REPORTE DE PRÁCTICAS CALIFICADAS</b>", styles["Title"]))
     elements.append(Spacer(1, 8))
     elements.append(Paragraph(f"<b>Alumno:</b> {alumno}", styles["Normal"]))
@@ -133,7 +131,6 @@ def generar_pdf(alumno, df, file_id):
             curso, _ = col.split("_")
             cursos_dict.setdefault(curso, []).append(col)
 
-    # 🔹 CURSOS (SIEMPRE EN 2 COLUMNAS)
     for curso, cols in cursos_dict.items():
 
         cols = sorted(cols, key=lambda x: int(x.split("_")[1].replace("P", "")))
@@ -144,17 +141,19 @@ def generar_pdf(alumno, df, file_id):
         for col in cols:
             val = data.iloc[0][col]
 
-        if pd.isna(val) or val == "":
-    tabla.append([col.split("_")[1], "Pendiente"])
-else:
-    val = float(val)
-    notas.append(val)
-    tabla.append([col.split("_")[1], val])
+            if pd.isna(val) or val == "":
+                tabla.append([col.split("_")[1], "Pendiente"])
+            else:
+                val = float(val)
+                notas.append(val)
+                tabla.append([col.split("_")[1], val])
 
         if notas:
-    promedio = round(sum(notas) / len(notas), 2)
-else:
-    promedio = 0
+            promedio = round(sum(notas) / len(notas), 2)
+        else:
+            promedio = 0
+
+        promedios[curso] = promedio
 
         color_prom = "green" if promedio >= 13 else "red"
 
@@ -174,7 +173,7 @@ else:
 
         elements.append(KeepTogether(bloque))
 
-    # 🔥 CAMBIO A UNA SOLA COLUMNA SOLO PARA RANKING
+    # 🔥 Ranking en 1 columna
     elements.append(NextPageTemplate("OneCol"))
     elements.append(PageBreak())
 
@@ -197,19 +196,15 @@ else:
 
     elements.append(t_rank)
 
-    # 🔥 CONFIGURACIÓN DE PÁGINAS
     doc = SimpleDocTemplate(file_path, pagesize=letter)
 
-    # 2 columnas
     frame1 = Frame(doc.leftMargin, doc.bottomMargin, 260, doc.height, id='col1')
     frame2 = Frame(doc.leftMargin + 270, doc.bottomMargin, 260, doc.height, id='col2')
     template_two = PageTemplate(id='TwoCol', frames=[frame1, frame2])
 
-    # 1 columna
     frame_full = Frame(doc.leftMargin, doc.bottomMargin, doc.width, doc.height, id='full')
     template_one = PageTemplate(id='OneCol', frames=[frame_full])
 
-    # 🔥 ORDEN IMPORTANTE (TwoCol primero)
     doc.addPageTemplates([template_two, template_one])
 
     doc.build(elements)
