@@ -117,7 +117,7 @@ def generar_pdf(alumno, df, file_id):
     elements = []
 
     # 🔹 ENCABEZADO
-    elements.append(Paragraph("📊 <b>REPORTE DE RENDIMIENTO</b>", styles["Title"]))
+    elements.append(Paragraph("📊 <b>REPORTE DE PRÁCTICAS</b>", styles["Title"]))
     elements.append(Spacer(1, 8))
     elements.append(Paragraph(f"<b>Alumno:</b> {alumno}", styles["Normal"]))
     elements.append(Spacer(1, 15))
@@ -143,7 +143,7 @@ def generar_pdf(alumno, df, file_id):
 
             if pd.isna(val) or val == "":
                 notas.append(0)
-                tabla.append([col.split("_")[1], "<font color='gray'>Pendiente</font>"])
+                tabla.append([col.split("_")[1], "Pendiente"])
             else:
                 val = float(val)
                 notas.append(val)
