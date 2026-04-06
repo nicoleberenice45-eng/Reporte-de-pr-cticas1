@@ -3,7 +3,8 @@ import pandas as pd
 import os
 import uuid
 import traceback
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Frame, PageTemplate
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet
@@ -59,20 +60,7 @@ button { padding: 10px; margin: 5px; width: 80%; border-radius: 8px; border: non
 </html>
 """
 
-# 🎨 fondo degradado
-def dibujar_fondo(canvas, doc):
-    width, height = letter
-
-    # color base verde claro
-    canvas.setFillColorRGB(0.85, 1, 0.85)
-    canvas.rect(0, 0, width, height, fill=1, stroke=0)
-
-    # franja superior amarilla
-    canvas.setFillColorRGB(1, 0.9, 0.3)
-    canvas.rect(0, height - 100, width, 100, fill=1, stroke=0)
-
-
-# ✅ PROCESAR EXCEL (detecta filas correctas)
+# ✅ PROCESAR EXCEL (detecta correctamente filas)
 def procesar_excel(path):
     df = pd.read_excel(path, header=None)
 
@@ -116,7 +104,7 @@ def procesar_excel(path):
     return df
 
 
-# 📄 GENERAR PDF (2 COLUMNAS)
+# 📄 GENERAR PDF (2 COLUMNAS REALES)
 def generar_pdf(alumno, df, file_id):
     data = df[df["Alumno"] == alumno]
 
@@ -125,10 +113,10 @@ def generar_pdf(alumno, df, file_id):
 
     file_path = f"{UPLOAD_FOLDER}/{file_id}_{alumno}.pdf"
 
-    doc = SimpleDocTemplate(file_path, pagesize=letter)
     styles = getSampleStyleSheet()
     elements = []
 
+    # encabezado
     elements.append(Paragraph("Reporte de Prácticas", styles["Title"]))
     elements.append(Spacer(1, 10))
     elements.append(Paragraph(f"Alumno: {alumno}", styles["Normal"]))
@@ -141,45 +129,38 @@ def generar_pdf(alumno, df, file_id):
             curso, _ = col.split("_")
             cursos_dict.setdefault(curso, []).append(col)
 
-    cursos_lista = list(cursos_dict.items())
-    mitad = len(cursos_lista) // 2
+    # contenido normal (fluye entre columnas)
+    for curso, cols in cursos_dict.items():
 
-    col1 = cursos_lista[:mitad]
-    col2 = cursos_lista[mitad:]
+        cols = sorted(cols, key=lambda x: int(x.split("_")[1].replace("P", "")))
 
-    def crear_bloque(cursos):
-        bloque = []
-        for curso, cols in cursos:
+        tabla = [["Práctica", "Nota"]]
 
-            cols = sorted(cols, key=lambda x: int(x.split("_")[1].replace("P", "")))
+        for col in cols:
+            val = data.iloc[0][col]
+            tabla.append([col.split("_")[1], val])
 
-            tabla = [["Práctica", "Nota"]]
+        t = Table(tabla)
+        t.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.green),
+            ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+            ('GRID', (0,0), (-1,-1), 1, colors.black)
+        ]))
 
-            for col in cols:
-                val = data.iloc[0][col]
-                tabla.append([col.split("_")[1], val])
+        elements.append(Paragraph(f"<b>{curso}</b>", styles["Heading3"]))
+        elements.append(t)
+        elements.append(Spacer(1, 12))
 
-            t = Table(tabla)
-            t.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (-1,0), colors.green),
-                ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-                ('GRID', (0,0), (-1,-1), 1, colors.black)
-            ]))
+    # columnas reales
+    doc = SimpleDocTemplate(file_path, pagesize=letter)
 
-            bloque.append(Paragraph(f"<b>{curso}</b>", styles["Heading3"]))
-            bloque.append(t)
-            bloque.append(Spacer(1, 10))
+    frame1 = Frame(doc.leftMargin, doc.bottomMargin, 260, doc.height, id='col1')
+    frame2 = Frame(doc.leftMargin + 270, doc.bottomMargin, 260, doc.height, id='col2')
 
-        return bloque
+    template = PageTemplate(frames=[frame1, frame2])
+    doc.addPageTemplates([template])
 
-    bloque1 = crear_bloque(col1)
-    bloque2 = crear_bloque(col2)
-
-    tabla_final = Table([[bloque1, bloque2]], colWidths=[270, 270])
-
-    elements.append(tabla_final)
-
-    doc.build(elements, onFirstPage=dibujar_fondo, onLaterPages=dibujar_fondo)
+    doc.build(elements)
 
     return file_path
 
