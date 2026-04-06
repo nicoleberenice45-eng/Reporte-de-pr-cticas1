@@ -59,28 +59,39 @@ button { padding: 10px; margin: 5px; width: 80%; border-radius: 8px; border: non
 </html>
 """
 
-# ✅ PROCESAR EXCEL
+# ✅ PROCESAR EXCEL (INTELIGENTE)
 def procesar_excel(path):
     df = pd.read_excel(path, header=None)
 
     cursos = df.iloc[0].ffill()
     practicas = df.iloc[1]
 
+    # 🔥 detectar columna alumno automáticamente
+    col_alumno = None
+    for col in df.columns:
+        valores = df[col].astype(str)
+        if valores.str.contains("ALUMNO|NOMBRE", case=False).any():
+            col_alumno = col
+            break
+
+    if col_alumno is None:
+        col_alumno = 0
+
     columnas = []
 
     for i in range(len(cursos)):
-        if i == 0:
-            columnas.append("Alumno")
-        else:
-            curso = str(cursos[i]).strip()
-            practica = str(practicas[i]).strip().upper().replace(" ", "")
+        curso = str(cursos[i]).strip()
+        practica = str(practicas[i]).strip().upper().replace(" ", "")
 
-            if practica.startswith("P"):
-                columnas.append(f"{curso}_{practica}")
-            else:
-                columnas.append(None)
+        if i == col_alumno:
+            columnas.append("Alumno")
+        elif practica.startswith("P"):
+            columnas.append(f"{curso}_{practica}")
+        else:
+            columnas.append(None)
 
     df.columns = columnas
+
     df = df.iloc[2:]
     df = df.loc[:, df.columns.notna()]
     df = df[df["Alumno"].notna()]
@@ -112,9 +123,10 @@ def generar_pdf(alumno, df, file_id):
             cursos_dict.setdefault(curso, []).append(col)
 
     for curso, cols in cursos_dict.items():
-        tabla = [["Práctica", "Nota"]]
 
         cols = sorted(cols, key=lambda x: int(x.split("_")[1].replace("P","")))
+
+        tabla = [["Práctica", "Nota"]]
 
         for col in cols:
             val = data.iloc[0][col]
@@ -133,7 +145,7 @@ def generar_pdf(alumno, df, file_id):
     return file_path
 
 
-# 🌐 HOME (POST + REDIRECT)
+# 🌐 HOME
 @app.route("/", methods=["GET", "POST"])
 def index():
     try:
@@ -155,7 +167,6 @@ def index():
             if not os.path.exists(path):
                 return render_template_string(HTML, error="Error guardando archivo")
 
-            # 🔥 REDIRECT para evitar bug del input file
             return redirect(url_for("ver_alumnos", file_id=file_id))
 
         return render_template_string(HTML)
