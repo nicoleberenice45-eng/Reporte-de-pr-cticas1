@@ -39,6 +39,9 @@ button {
     background: #4CAF50;
     color: white;
 }
+.error {
+    color: red;
+}
 </style>
 </head>
 <body>
@@ -65,7 +68,7 @@ button {
 {% endif %}
 
 {% if error %}
-<div class="box" style="color:red;">
+<div class="box error">
 {{error}}
 </div>
 {% endif %}
@@ -74,11 +77,10 @@ button {
 </html>
 """
 
-# ✅ PROCESAR EXCEL (ALINEADO PERFECTO)
+# ✅ PROCESAR EXCEL (alineado correctamente)
 def procesar_excel(path):
     df = pd.read_excel(path, header=None)
 
-    # encabezados reales
     cursos = df.iloc[0].ffill()
     practicas = df.iloc[1]
 
@@ -97,10 +99,10 @@ def procesar_excel(path):
 
     df.columns = columnas
 
-    # eliminar filas de encabezado
+    # quitar encabezados
     df = df.iloc[2:].reset_index(drop=True)
 
-    # limpiar columnas inválidas
+    # limpiar columnas
     df = df.loc[:, df.columns.notna()]
 
     # eliminar filas sin alumno
@@ -112,6 +114,9 @@ def procesar_excel(path):
 # 📄 GENERAR PDF
 def generar_pdf(alumno, df, file_id):
     data = df[df["Alumno"] == alumno]
+
+    if data.empty:
+        raise Exception("Alumno sin datos")
 
     file_path = f"{UPLOAD_FOLDER}/{file_id}_{alumno}.pdf"
 
@@ -149,7 +154,7 @@ def generar_pdf(alumno, df, file_id):
             tabla.append([col.split("_")[1], val])
             notas.append(val)
 
-        promedio = round(sum(notas)/len(notas), 2)
+        promedio = round(sum(notas) / len(notas), 2)
 
         elements.append(Paragraph(f"<b>{curso}</b>", styles["Heading2"]))
 
@@ -182,10 +187,6 @@ def index():
 
             df = procesar_excel(path)
 
-            # DEBUG
-            print(df.columns.tolist())
-            print(df.head())
-
             alumnos = df["Alumno"].unique().tolist()
 
             return render_template_string(HTML, alumnos=alumnos, file_id=file_id)
@@ -203,6 +204,11 @@ def reporte():
         file_id = request.form["file_id"]
 
         path = f"{UPLOAD_FOLDER}/{file_id}.xlsx"
+
+        # 🔥 evitar error de archivo perdido
+        if not os.path.exists(path):
+            return "El archivo ya no existe. Vuelve a subirlo."
+
         df = procesar_excel(path)
 
         pdf = generar_pdf(alumno, df, file_id)
@@ -213,5 +219,6 @@ def reporte():
         return f"Error: {str(e)}<br><pre>{traceback.format_exc()}</pre>"
 
 
+# 🔥 IMPORTANTE: evitar reinicio automático
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, use_reloader=False)
