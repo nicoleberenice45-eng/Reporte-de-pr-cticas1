@@ -79,45 +79,39 @@ button {
 </html>
 """
 
-# 🔥 PROCESAR EXCEL (ULTRA ROBUSTO)
+# 🔥 PROCESAR EXCEL (VERSIÓN DEFINITIVA)
 def procesar_excel(path):
-    df = pd.read_excel(path, header=None)
+    df = pd.read_excel(path, header=None, engine="openpyxl")
 
-    # 🔍 detectar columna de alumno
-    col_alumno = None
-    for col in df.columns:
-        valores = df[col].astype(str)
-        if valores.str.contains("ALUMNO|NOMBRE", case=False).any():
-            col_alumno = col
-            break
-
-    if col_alumno is None:
-        col_alumno = 0  # fallback
+    # eliminar filas completamente vacías
+    df = df.dropna(how="all")
 
     # encabezados
-    cursos = df.iloc[0].ffill()
+    cursos = df.iloc[0].copy().ffill()
     practicas = df.iloc[1]
 
     columnas = []
 
     for i in range(len(cursos)):
         curso = str(cursos[i]).strip()
-        practica = str(practicas[i]).strip()
+        practica = str(practicas[i]).strip().upper().replace(" ", "")
 
-        if i == col_alumno:
+        if i == 0:
             columnas.append("Alumno")
-        elif practica.upper().startswith("P"):
+        elif practica.startswith("P"):
             columnas.append(f"{curso}_{practica}")
         else:
             columnas.append(None)
 
     df.columns = columnas
 
-    # datos
+    # quitar encabezados
     df = df.iloc[2:].reset_index(drop=True)
 
-    # limpiar
+    # eliminar columnas basura
     df = df.loc[:, df.columns.notna()]
+
+    # limpiar alumnos vacíos
     df = df[df["Alumno"].notna()]
 
     return df
@@ -143,7 +137,7 @@ def generar_pdf(alumno, df, file_id):
 
     cursos_dict = {}
 
-    # agrupar cursos
+    # agrupar cursos correctamente
     for col in df.columns:
         if col != "Alumno" and "_" in col:
             curso, practica = col.split("_")
@@ -152,11 +146,8 @@ def generar_pdf(alumno, df, file_id):
     # generar tablas
     for curso, cols in cursos_dict.items():
 
-        # ordenar P1 → P6
-        try:
-            cols = sorted(cols, key=lambda x: int(x.split("_")[1].replace("P","")))
-        except:
-            pass
+        # ordenar P1 → P6 correctamente
+        cols = sorted(cols, key=lambda x: int(x.split("_")[1].replace("P", "")))
 
         tabla = [["Práctica", "Nota"]]
         notas = []
@@ -172,7 +163,7 @@ def generar_pdf(alumno, df, file_id):
             tabla.append([col.split("_")[1], val])
             notas.append(val)
 
-        promedio = round(sum(notas)/len(notas), 2) if notas else 0
+        promedio = round(sum(notas) / len(notas), 2) if notas else 0
 
         elements.append(Paragraph(f"<b>{curso}</b>", styles["Heading2"]))
 
@@ -204,6 +195,10 @@ def index():
             file.save(path)
 
             df = procesar_excel(path)
+
+            # 🔍 DEBUG (puedes quitar luego)
+            print(df.columns.tolist())
+            print(df.head())
 
             alumnos = df["Alumno"].dropna().unique().tolist()
 
