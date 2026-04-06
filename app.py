@@ -9,7 +9,6 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet
 
 app = Flask(__name__)
-app.config["PROPAGATE_EXCEPTIONS"] = True
 
 UPLOAD_FOLDER = "temp"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -40,10 +39,6 @@ button {
     background: #4CAF50;
     color: white;
 }
-.error {
-    color: red;
-    font-weight: bold;
-}
 </style>
 </head>
 <body>
@@ -55,12 +50,6 @@ button {
 <button>Procesar</button>
 </form>
 </div>
-
-{% if error %}
-<div class="box error">
-{{error}}
-</div>
-{% endif %}
 
 {% if alumnos %}
 <div class="box">
@@ -75,19 +64,22 @@ button {
 </div>
 {% endif %}
 
+{% if error %}
+<div class="box" style="color:red;">
+{{error}}
+</div>
+{% endif %}
+
 </body>
 </html>
 """
 
-# 🔥 PROCESAR EXCEL (VERSIÓN DEFINITIVA)
+# ✅ PROCESAR EXCEL (ALINEADO PERFECTO)
 def procesar_excel(path):
-    df = pd.read_excel(path, header=None, engine="openpyxl")
+    df = pd.read_excel(path, header=None)
 
-    # eliminar filas completamente vacías
-    df = df.dropna(how="all")
-
-    # encabezados
-    cursos = df.iloc[0].copy().ffill()
+    # encabezados reales
+    cursos = df.iloc[0].ffill()
     practicas = df.iloc[1]
 
     columnas = []
@@ -105,13 +97,13 @@ def procesar_excel(path):
 
     df.columns = columnas
 
-    # quitar encabezados
+    # eliminar filas de encabezado
     df = df.iloc[2:].reset_index(drop=True)
 
-    # eliminar columnas basura
+    # limpiar columnas inválidas
     df = df.loc[:, df.columns.notna()]
 
-    # limpiar alumnos vacíos
+    # eliminar filas sin alumno
     df = df[df["Alumno"].notna()]
 
     return df
@@ -120,9 +112,6 @@ def procesar_excel(path):
 # 📄 GENERAR PDF
 def generar_pdf(alumno, df, file_id):
     data = df[df["Alumno"] == alumno]
-
-    if data.empty:
-        raise Exception("Alumno sin datos")
 
     file_path = f"{UPLOAD_FOLDER}/{file_id}_{alumno}.pdf"
 
@@ -137,16 +126,13 @@ def generar_pdf(alumno, df, file_id):
 
     cursos_dict = {}
 
-    # agrupar cursos correctamente
     for col in df.columns:
-        if col != "Alumno" and "_" in col:
+        if col != "Alumno":
             curso, practica = col.split("_")
             cursos_dict.setdefault(curso, []).append(col)
 
-    # generar tablas
     for curso, cols in cursos_dict.items():
 
-        # ordenar P1 → P6 correctamente
         cols = sorted(cols, key=lambda x: int(x.split("_")[1].replace("P", "")))
 
         tabla = [["Práctica", "Nota"]]
@@ -163,7 +149,7 @@ def generar_pdf(alumno, df, file_id):
             tabla.append([col.split("_")[1], val])
             notas.append(val)
 
-        promedio = round(sum(notas) / len(notas), 2) if notas else 0
+        promedio = round(sum(notas)/len(notas), 2)
 
         elements.append(Paragraph(f"<b>{curso}</b>", styles["Heading2"]))
 
@@ -196,11 +182,11 @@ def index():
 
             df = procesar_excel(path)
 
-            # 🔍 DEBUG (puedes quitar luego)
+            # DEBUG
             print(df.columns.tolist())
             print(df.head())
 
-            alumnos = df["Alumno"].dropna().unique().tolist()
+            alumnos = df["Alumno"].unique().tolist()
 
             return render_template_string(HTML, alumnos=alumnos, file_id=file_id)
 
