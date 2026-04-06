@@ -4,7 +4,10 @@ import os
 import uuid
 import traceback
 
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Frame, PageTemplate, KeepTogether
+from reportlab.platypus import (
+    SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+    Frame, PageTemplate, KeepTogether, PageBreak
+)
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet
@@ -116,32 +119,47 @@ def generar_pdf(alumno, df, file_id):
     styles = getSampleStyleSheet()
     elements = []
 
-    elements.append(Paragraph("Reporte de Prácticas", styles["Title"]))
-    elements.append(Spacer(1, 10))
-    elements.append(Paragraph(f"Alumno: {alumno}", styles["Normal"]))
-    elements.append(Spacer(1, 20))
+    # 🔥 ENCABEZADO BONITO
+    elements.append(Paragraph("📊 <b>REPORTE DE RENDIMIENTO</b>", styles["Title"]))
+    elements.append(Spacer(1, 8))
+    elements.append(Paragraph(f"<b>Alumno:</b> {alumno}", styles["Normal"]))
+    elements.append(Spacer(1, 15))
 
     cursos_dict = {}
+    promedios = {}
 
     for col in df.columns:
         if col != "Alumno":
             curso, _ = col.split("_")
             cursos_dict.setdefault(curso, []).append(col)
 
-    # 🔥 BLOQUES QUE NO SE ROMPEN
+    # 🔥 BLOQUES VISUALES
     for curso, cols in cursos_dict.items():
 
         cols = sorted(cols, key=lambda x: int(x.split("_")[1].replace("P", "")))
 
         tabla = [["Práctica", "Nota"]]
+        notas = []
 
         for col in cols:
             val = data.iloc[0][col]
+            try:
+                val = float(val)
+            except:
+                val = 0
+
+            notas.append(val)
             tabla.append([col.split("_")[1], val])
+
+        promedio = round(sum(notas) / len(notas), 2)
+        promedios[curso] = promedio
+
+        # 🎨 color según rendimiento
+        color_prom = colors.green if promedio >= 13 else colors.red
 
         t = Table(tabla)
         t.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (-1,0), colors.green),
+            ('BACKGROUND', (0,0), (-1,0), colors.darkgreen),
             ('TEXTCOLOR', (0,0), (-1,0), colors.white),
             ('GRID', (0,0), (-1,-1), 1, colors.black)
         ]))
@@ -149,13 +167,35 @@ def generar_pdf(alumno, df, file_id):
         bloque = [
             Paragraph(f"<b>{curso}</b>", styles["Heading3"]),
             t,
+            Paragraph(f"<b>Promedio:</b> <font color='{ 'green' if promedio>=13 else 'red' }'>{promedio}</font>", styles["Normal"]),
             Spacer(1, 12)
         ]
 
-        # 🔥 ESTO EVITA QUE SE PARTA
         elements.append(KeepTogether(bloque))
 
-    # 🔥 COLUMNAS EN TODAS LAS PÁGINAS
+    # 🔥 RANKING
+    elements.append(PageBreak())  # nueva sección limpia
+
+    elements.append(Paragraph("🏆 <b>Ranking de Fortalezas</b>", styles["Title"]))
+    elements.append(Spacer(1, 15))
+
+    ranking = sorted(promedios.items(), key=lambda x: x[1], reverse=True)
+
+    tabla_rank = [["Posición", "Curso", "Promedio"]]
+
+    for i, (curso, prom) in enumerate(ranking, start=1):
+        tabla_rank.append([i, curso, prom])
+
+    t_rank = Table(tabla_rank)
+    t_rank.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.darkblue),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+        ('GRID', (0,0), (-1,-1), 1, colors.black)
+    ]))
+
+    elements.append(t_rank)
+
+    # 🔥 COLUMNAS REALES EN TODAS LAS PÁGINAS
     doc = SimpleDocTemplate(file_path, pagesize=letter)
 
     frame1 = Frame(doc.leftMargin, doc.bottomMargin, 260, doc.height, id='col1')
