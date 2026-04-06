@@ -116,8 +116,11 @@ def generar_pdf(alumno, df, file_id):
     styles = getSampleStyleSheet()
     elements = []
 
+    # 🔥 FORZAR 2 COLUMNAS DESDE EL INICIO
+    elements.append(NextPageTemplate("TwoCol"))
+
     # 🔹 ENCABEZADO
-    elements.append(Paragraph("📊 <b>REPORTE DE PRÁCTICAS</b>", styles["Title"]))
+    elements.append(Paragraph("📊 <b>REPORTE DE RENDIMIENTO</b>", styles["Title"]))
     elements.append(Spacer(1, 8))
     elements.append(Paragraph(f"<b>Alumno:</b> {alumno}", styles["Normal"]))
     elements.append(Spacer(1, 15))
@@ -130,7 +133,7 @@ def generar_pdf(alumno, df, file_id):
             curso, _ = col.split("_")
             cursos_dict.setdefault(curso, []).append(col)
 
-    # 🔹 CURSOS (2 columnas)
+    # 🔹 CURSOS (SIEMPRE EN 2 COLUMNAS)
     for curso, cols in cursos_dict.items():
 
         cols = sorted(cols, key=lambda x: int(x.split("_")[1].replace("P", "")))
@@ -143,7 +146,7 @@ def generar_pdf(alumno, df, file_id):
 
             if pd.isna(val) or val == "":
                 notas.append(0)
-                tabla.append([col.split("_")[1], "Pendiente"])
+                tabla.append([col.split("_")[1], "<font color='gray'>Pendiente</font>"])
             else:
                 val = float(val)
                 notas.append(val)
@@ -170,11 +173,10 @@ def generar_pdf(alumno, df, file_id):
 
         elements.append(KeepTogether(bloque))
 
-    # 🔥 CAMBIO A UNA SOLA COLUMNA
+    # 🔥 CAMBIO A UNA SOLA COLUMNA SOLO PARA RANKING
     elements.append(NextPageTemplate("OneCol"))
     elements.append(PageBreak())
 
-    # 🔹 RANKING (1 columna)
     elements.append(Paragraph("🏆 <b>Ranking de Fortalezas</b>", styles["Title"]))
     elements.append(Spacer(1, 15))
 
@@ -194,7 +196,7 @@ def generar_pdf(alumno, df, file_id):
 
     elements.append(t_rank)
 
-    # 🔥 DEFINICIÓN DE COLUMNAS
+    # 🔥 CONFIGURACIÓN DE PÁGINAS
     doc = SimpleDocTemplate(file_path, pagesize=letter)
 
     # 2 columnas
@@ -206,6 +208,7 @@ def generar_pdf(alumno, df, file_id):
     frame_full = Frame(doc.leftMargin, doc.bottomMargin, doc.width, doc.height, id='full')
     template_one = PageTemplate(id='OneCol', frames=[frame_full])
 
+    # 🔥 ORDEN IMPORTANTE (TwoCol primero)
     doc.addPageTemplates([template_two, template_one])
 
     doc.build(elements)
