@@ -148,11 +148,7 @@ def generar_pdf(alumno, df, file_id):
                 notas.append(val)
                 tabla.append([col.split("_")[1], val])
 
-        if notas:
-            promedio = round(sum(notas) / len(notas), 2)
-        else:
-            promedio = 0
-
+        promedio = round(sum(notas) / len(notas), 2) if notas else 0
         promedios[curso] = promedio
 
         color_prom = "green" if promedio >= 13 else "red"
@@ -173,7 +169,7 @@ def generar_pdf(alumno, df, file_id):
 
         elements.append(KeepTogether(bloque))
 
-    # 🔥 Ranking en 1 columna
+    # 🔥 Ranking
     elements.append(NextPageTemplate("OneCol"))
     elements.append(PageBreak())
 
@@ -189,24 +185,24 @@ def generar_pdf(alumno, df, file_id):
 
     t_rank = Table(tabla_rank)
 
-style = [
-    ('BACKGROUND', (0,0), (-1,0), colors.darkblue),
-    ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-    ('GRID', (0,0), (-1,-1), 1, colors.black)
-]
+    style = [
+        ('BACKGROUND', (0,0), (-1,0), colors.darkblue),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+        ('GRID', (0,0), (-1,-1), 1, colors.black)
+    ]
 
-# 🎨 Aplicar colores por promedio
-for i, (_, prom) in enumerate(ranking, start=1):
-    if prom >= 15:
-        bg_color = colors.lightgreen
-    elif 11 <= prom < 15:
-        bg_color = colors.yellow
-    else:
-        bg_color = colors.salmon
+    # 🎨 COLORES POR PROMEDIO
+    for i, (_, prom) in enumerate(ranking, start=1):
+        if prom >= 15:
+            bg_color = colors.lightgreen
+        elif 11 <= prom < 15:
+            bg_color = colors.yellow
+        else:
+            bg_color = colors.salmon
 
-    style.append(('BACKGROUND', (0, i), (-1, i), bg_color))
+        style.append(('BACKGROUND', (0, i), (-1, i), bg_color))
 
-t_rank.setStyle(TableStyle(style))
+    t_rank.setStyle(TableStyle(style))
 
     elements.append(t_rank)
 
