@@ -188,11 +188,25 @@ def generar_pdf(alumno, df, file_id):
         tabla_rank.append([i, curso, prom])
 
     t_rank = Table(tabla_rank)
-    t_rank.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.darkblue),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-        ('GRID', (0,0), (-1,-1), 1, colors.black)
-    ]))
+
+style = [
+    ('BACKGROUND', (0,0), (-1,0), colors.darkblue),
+    ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+    ('GRID', (0,0), (-1,-1), 1, colors.black)
+]
+
+# 🎨 Aplicar colores por promedio
+for i, (_, prom) in enumerate(ranking, start=1):
+    if prom >= 15:
+        bg_color = colors.lightgreen
+    elif 11 <= prom < 15:
+        bg_color = colors.yellow
+    else:
+        bg_color = colors.salmon
+
+    style.append(('BACKGROUND', (0, i), (-1, i), bg_color))
+
+t_rank.setStyle(TableStyle(style))
 
     elements.append(t_rank)
 
